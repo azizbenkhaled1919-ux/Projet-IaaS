@@ -211,6 +211,16 @@ resource "aws_instance" "web" {
   subnet_id              = aws_subnet.private[count.index % length(aws_subnet.private)].id
   vpc_security_group_ids = [aws_security_group.ec2.id]
 
+  # Ajoute cette partie ici :
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y nginx
+              systemctl start nginx
+              systemctl enable nginx
+              echo "<h1>Infrastructure E-commerce Deployee avec Succes !</h1>" > /usr/share/nginx/html/index.html
+              EOF
+
   root_block_device {
     volume_size = 30
     volume_type = "gp3"
@@ -220,7 +230,7 @@ resource "aws_instance" "web" {
     Name        = "${var.project_name}-web-${count.index + 1}"
     Environment = var.environment
   }
-}
+}}
 
 # ─────────────────────────────────────────
 # Application Load Balancer
