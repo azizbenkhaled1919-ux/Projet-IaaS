@@ -1,0 +1,26 @@
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+terraform/tfplan
+*.tfvars
+!*.tfvars.example
+
+# Ansible
+ansible/inventory.ini
+*.retry
+
+# Node.js
+app/node_modules/
+app/.env
+*.log
+
+# SSH keys
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db

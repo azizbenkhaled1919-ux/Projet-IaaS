@@ -1,0 +1,57 @@
+---
+# ─────────────────────────────────────────────────────────────
+# deploy.yml — Playbook principal de déploiement
+# Installe Docker, déploie Nginx + Node.js + MongoDB via Docker Compose
+# ─────────────────────────────────────────────────────────────
+
+- name: Deploy E-Commerce Application
+  hosts: web
+  become: true
+  vars:
+    app_dir: /opt/ecommerce
+    compose_file: "{{ app_dir }}/docker-compose.yml"
+
+  pre_tasks:
+    - name: Attendre que la connexion SSH soit disponible
+      wait_for_connection:
+        delay: 10
+        timeout: 120
+
+    - name: Mettre à jour les paquets (Amazon Linux)
+      yum:
+        name: "*"
+        state: latest
+        update_cache: true
+      when: ansible_os_family == "RedHat"
+
+    - name: Mettre à jour les paquets (Ubuntu/Debian)
+      apt:
+        update_cache: true
+        upgrade: dist
+      when: ansible_os_family == "Debian"
+
+  roles:
+    - docker
+    - app
+
+  post_tasks:
+    - name: Vérifier que les conteneurs tournent
+      command: docker compose -f {{ compose_file }} ps
+      register: compose_status
+
+    - name: Afficher le statut des conteneurs
+      debug:
+        var: compose_status.stdout_lines
+
+    - name: Vérifier le health check de l'app
+      uri:
+        url: "http://localhost/health"
+        method: GET
+        status_code: 200
+      retries: 5
+      delay: 10
+      register: health_result
+
+    - name: Afficher le résultat du health check
+      debug:
+        msg: "✅ Application déployée avec succès ! Status: {{ health_result.status }}"
