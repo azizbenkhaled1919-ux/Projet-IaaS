@@ -67,7 +67,7 @@ resource "aws_subnet" "private" {
 }
 
 # ─────────────────────────────────────────
-# NAT Gateway (pour accès internet depuis private subnet)
+# NAT Gateway
 # ─────────────────────────────────────────
 resource "aws_eip" "nat" {
   domain = "vpc"
@@ -127,11 +127,8 @@ resource "aws_route_table_association" "private" {
 # ─────────────────────────────────────────
 # Security Groups
 # ─────────────────────────────────────────
-
-# ALB : trafic HTTP/HTTPS public
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-alb-sg"
-  description = "Allow HTTP/HTTPS from internet"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -141,27 +138,16 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-  tags = { Name = "${var.project_name}-alb-sg" }
 }
 
-# EC2 : trafic depuis ALB + SSH depuis bastion / runner
 resource "aws_security_group" "ec2" {
   name        = "${var.project_name}-ec2-sg"
-  description = "Allow traffic from ALB and SSH"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -171,21 +157,12 @@ resource "aws_security_group" "ec2" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Restreindre en production
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-  tags = { Name = "${var.project_name}-ec2-sg" }
 }
 
 # ─────────────────────────────────────────
@@ -196,7 +173,6 @@ data "aws_availability_zones" "available" {}
 data "aws_ami" "amazon_linux" {
   most_recent = true
   owners      = ["amazon"]
-
   filter {
     name   = "name"
     values = ["al2023-ami-*-x86_64"]
@@ -207,11 +183,9 @@ resource "aws_instance" "web" {
   count                  = var.instance_count
   ami                    = data.aws_ami.amazon_linux.id
   instance_type          = var.instance_type
-  key_name               = var.key_name
   subnet_id              = aws_subnet.private[count.index % length(aws_subnet.private)].id
   vpc_security_group_ids = [aws_security_group.ec2.id]
 
-  # Ajoute cette partie ici :
   user_data = <<-EOF
               #!/bin/bash
               yum update -y
@@ -226,11 +200,8 @@ resource "aws_instance" "web" {
     volume_type = "gp3"
   }
 
-  tags = {
-    Name        = "${var.project_name}-web-${count.index + 1}"
-    Environment = var.environment
-  }
-}}
+  tags = { Name = "${var.project_name}-web-${count.index + 1}" }
+}
 
 # ─────────────────────────────────────────
 # Application Load Balancer
@@ -241,10 +212,6 @@ resource "aws_lb" "main" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
-
-  enable_deletion_protection = false
-
-  tags = { Name = "${var.project_name}-alb" }
 }
 
 resource "aws_lb_target_group" "app" {
@@ -254,15 +221,13 @@ resource "aws_lb_target_group" "app" {
   vpc_id   = aws_vpc.main.id
 
   health_check {
-    path                = "/health"
+    path                = "/" # CORRIGÉ : pointe vers la racine pour Nginx
     interval            = 30
     timeout             = 5
     healthy_threshold   = 2
     unhealthy_threshold = 3
     matcher             = "200"
   }
-
-  tags = { Name = "${var.project_name}-tg" }
 }
 
 resource "aws_lb_target_group_attachment" "app" {
